@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html>
+
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>拖拽上传</title>
+
+        <!-- IMPORT CSS -->
+        <link rel="stylesheet" href="css/reset.min.css">
+        <link rel="stylesheet" href="css/upload.css">
+        <style>
+            html,
+            body {
+                overflow-x: hidden;
+            }
+
+            .container {
+                padding: 20px 100px;
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-start;
+            }
+
+            .container .item h3 {
+                line-height: 40px;
+            }
+        </style>
+    </head>
+
+    <body>
+        <div class="container">
+            <div class="item">
+                <h3>拖拽上传</h3>
+                <section class="upload_box" id="upload6">
+                    <input type="file" class="upload_inp">
+                    <div class="upload_drag">
+                        <i class="icon"></i>
+                        <span class="text">将文件拖到此处，或<a href="javascript:;" class="upload_submit">点击上传</a></span>
+                    </div>
+                    <div class="upload_mark">正在上传中，请稍等...</div>
+                </section>
+            </div>
+        </div>
+
+
+        <!-- IMPORT JS -->
+        <script src="js/axios.min.js"></script>
+        <script src="js/qs.js"></script>
+        <script src="js//spark-md5.min.js"></script>
+        <script src="js/instance.js"></script>
+        <!-- 拖拽上传 -->
+        <script>
+            let upload = document.querySelector('#upload6'),
+                upload_inp = upload.querySelector('.upload_inp'),
+                upload_submit = upload.querySelector('.upload_submit'),
+                upload_mark = upload.querySelector('.upload_mark');
+            let isRun = false;
+
+            // 实现文件上传
+            const uploadFile = async file => {
+                if (isRun) return;
+                isRun = true;
+                upload_mark.style.display = 'block';
+                try {
+                    let fm = new FormData,
+                        data;
+                    fm.append('file', file);
+                    fm.append('filename', file.name);
+                    data = await instance.post('/upload_single', fm);
+                    if (+data.code === 0) {
+                        alert(`恭喜您，文件上传成功，您可以基于 ${data.servicePath} 访问该文件~~`);
+                        return;
+                    }
+                    throw data.codeText;
+                } catch (err) {
+                    alert(`很遗憾，文件上传失败，请您稍后再试~~`);
+                } finally {
+                    upload_mark.style.display = 'none';
+                    isRun = false;
+                }
+            };
+
+            // 拖拽获取 dragenter dragleave dragover drop
+            /* upload.addEventListener('dragenter', function () {
+                console.log('进入');
+            });
+            upload.addEventListener('dragleave', function () {
+                console.log('离开');
+            }); */
+            upload.addEventListener('dragover', function (ev) {
+                // 拖拽时浏览器默认会在新的标签页打开，阻止浏览器的默认行为
+                ev.preventDefault();
+            });
+            upload.addEventListener('drop', function (ev) {
+                ev.preventDefault();
+                let file = ev.dataTransfer.files[0];
+                if (!file) return;
+                uploadFile(file);
+            });
+
+            // 手动选择
+            upload_inp.addEventListener('change', function () {
+                let file = upload_inp.files[0];
+                if (!file) return;
+                uploadFile(file);
+            });
+            upload_submit.addEventListener('click', function () {
+                upload_inp.click();
+            });
+        </script>
+    </body>
+
+</html>

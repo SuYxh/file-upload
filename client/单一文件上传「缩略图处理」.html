@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html>
+
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>单一文件上传「缩略图处理」</title>
+
+        <!-- IMPORT CSS -->
+        <link rel="stylesheet" href="css/reset.min.css">
+        <link rel="stylesheet" href="css/upload.css">
+        <style>
+            html,
+            body {
+                overflow-x: hidden;
+            }
+
+            .container {
+                padding: 20px 100px;
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-start;
+            }
+
+            .container .item h3 {
+                line-height: 40px;
+            }
+        </style>
+    </head>
+
+    <body>
+        <div class="container">
+            <div class="item">
+                <h3>单一文件上传「缩略图处理」</h3>
+                <section class="upload_box" id="upload3">
+                    <input type="file" class="upload_inp" accept=".jpg,.jpeg,.png">
+                    <div class="upload_button_box">
+                        <button class="upload_button select">选择文件</button>
+                        <button class="upload_button upload">上传到服务器</button>
+                    </div>
+                    <div class="upload_abbre">
+                        <img src="" alt="">
+                    </div>
+                </section>
+            </div>
+        </div>
+
+
+        <!-- IMPORT JS -->
+        <script src="js/axios.min.js"></script>
+        <script src="js/qs.js"></script>
+        <script src="js//spark-md5.min.js"></script>
+        <script src="js/instance.js"></script>
+        <!-- 单一文件上传「缩略图处理」 -->
+        <script>
+            /* 文件缩略图 & 自动生成名字 */
+            let upload = document.querySelector('#upload3'),
+                upload_inp = upload.querySelector('.upload_inp'),
+                upload_button_select = upload.querySelector('.upload_button.select'),
+                upload_button_upload = upload.querySelector('.upload_button.upload'),
+                upload_abbre = upload.querySelector('.upload_abbre'),
+                upload_abbre_img = upload_abbre.querySelector('img');
+            let _file = null;
+
+            // 验证是否处于可操作性状态
+            const checkIsDisable = element => {
+                let classList = element.classList;
+                return classList.contains('disable') || classList.contains('loading');
+            };
+
+            // 把选择的文件读取成为BASE64
+            const changeBASE64 = file => {
+                return new Promise(resolve => {
+                    let fileReader = new FileReader();
+                    fileReader.readAsDataURL(file);
+                    fileReader.onload = ev => {
+                        resolve(ev.target.result);
+                    };
+                });
+            };
+            const changeBuffer = file => {
+                return new Promise(resolve => {
+                    let fileReader = new FileReader();
+                    fileReader.readAsArrayBuffer(file);
+                    fileReader.onload = ev => {
+                        let buffer = ev.target.result,
+                            spark = new SparkMD5.ArrayBuffer(),
+                            HASH,
+                            suffix;
+                        spark.append(buffer);
+                        HASH = spark.end();
+                        suffix = /\.([a-zA-Z0-9]+)$/.exec(file.name)[1];
+                        resolve({
+                            buffer,
+                            HASH,
+                            suffix,
+                            filename: `${HASH}.${suffix}`
+                        });
+                    };
+                });
+            };
+
+            // 把文件上传到服务器
+            const changeDisable = flag => {
+                if (flag) {
+                    upload_button_select.classList.add('disable');
+                    upload_button_upload.classList.add('loading');
+                    return;
+                }
+                upload_button_select.classList.remove('disable');
+                upload_button_upload.classList.remove('loading');
+            };
+            upload_button_upload.addEventListener('click', async function () {
+                if (checkIsDisable(this)) return;
+                if (!_file) {
+                    alert('请您先选择要上传的文件~~');
+                    return;
+                }
+                changeDisable(true);
+                // 生成文件的HASH名字
+                let {
+                    filename
+                } = await changeBuffer(_file);
+                let formData = new FormData();
+                formData.append('file', _file);
+                formData.append('filename', filename);
+                instance.post('/upload_single_name', formData).then(data => {
+                    if (+data.code === 0) {
+                        alert(`文件已经上传成功~~,您可以基于 ${data.servicePath} 访问这个资源~~`);
+                        return;
+                    }
+                    return Promise.reject(data.codeText);
+                }).catch(reason => {
+                    alert('文件上传失败，请您稍后再试~~');
+                }).finally(() => {
+                    changeDisable(false);
+                    upload_abbre.style.display = 'none';
+                    upload_abbre_img.src = '';
+                    _file = null;
+                });
+            });
+
+
+            // 文件预览，就是把文件对象转换为BASE64，赋值给图片的SRC属性即可
+            upload_inp.addEventListener('change', async function () {
+                let file = upload_inp.files[0],
+                    BASE64;
+                if (!file) return;
+                _file = file;
+                upload_button_select.classList.add('disable');
+                BASE64 = await changeBASE64(file);
+                upload_abbre.style.display = 'block';
+                upload_abbre_img.src = BASE64;
+                upload_button_select.classList.remove('disable');
+            });
+            upload_button_select.addEventListener('click', function () {
+                if (checkIsDisable(this)) return;
+                upload_inp.click();
+            });
+        </script>
+    </body>
+
+</html>

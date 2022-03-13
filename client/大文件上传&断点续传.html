@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html>
+
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>大文件上传/断点续传</title>
+
+        <!-- IMPORT CSS -->
+        <link rel="stylesheet" href="css/reset.min.css">
+        <link rel="stylesheet" href="css/upload.css">
+        <style>
+            html,
+            body {
+                overflow-x: hidden;
+            }
+
+            .container {
+                padding: 20px 100px;
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-start;
+            }
+
+            .container .item h3 {
+                line-height: 40px;
+            }
+        </style>
+    </head>
+
+    <body>
+        <div class="container">
+            <div class="item">
+                <h3>大文件上传</h3>
+                <section class="upload_box" id="upload7">
+                    <input type="file" class="upload_inp">
+                    <div class="upload_button_box">
+                        <button class="upload_button select">上传图片</button>
+                    </div>
+                    <div class="upload_progress">
+                        <div class="value"></div>
+                    </div>
+                </section>
+            </div>
+        </div>
+
+
+        <!-- IMPORT JS -->
+        <script src="js/axios.min.js"></script>
+        <script src="js/qs.js"></script>
+        <script src="js//spark-md5.min.js"></script>
+        <script src="js/instance.js"></script>
+
+        <!-- 大文件上传/断点续传 -->
+        <script>
+            let upload = document.querySelector('#upload7'),
+                upload_inp = upload.querySelector('.upload_inp'),
+                upload_button_select = upload.querySelector('.upload_button.select'),
+                upload_progress = upload.querySelector('.upload_progress'),
+                upload_progress_value = upload_progress.querySelector('.value');
+
+            const checkIsDisable = element => {
+                let classList = element.classList;
+                return classList.contains('disable') || classList.contains('loading');
+            };
+
+            const changeBuffer = file => {
+                return new Promise(resolve => {
+                    let fileReader = new FileReader();
+                    fileReader.readAsArrayBuffer(file);
+                    fileReader.onload = ev => {
+                        let buffer = ev.target.result,
+                            spark = new SparkMD5.ArrayBuffer(),
+                            HASH,
+                            suffix;
+                        spark.append(buffer);
+                        HASH = spark.end();
+                        suffix = /\.([a-zA-Z0-9]+)$/.exec(file.name)[1];
+                        resolve({
+                            buffer,
+                            HASH,
+                            suffix,
+                            filename: `${HASH}.${suffix}`
+                        });
+                    };
+                });
+            };
+
+            upload_inp.addEventListener('change', async function () {
+                let file = upload_inp.files[0];
+                if (!file) return;
+                // 添加loading
+                upload_button_select.classList.add('loading');
+                // 添加进度条
+                upload_progress.style.display = 'block';
+
+                // 获取文件的HASH
+                let already = [],
+                    data = null,
+                    {
+                        HASH,
+                        suffix
+                    } = await changeBuffer(file);
+
+                try {
+                    data = await instance.get('/upload_already', {
+                        params: {
+                            HASH
+                        }
+                    });
+                    if (+data.code === 0) {
+                        already = data.fileList;
+                    }
+                } catch (err) { }
+
+                // 实现文件切片处理 「固定数量(方案一) & 固定大小(方案二)」 先用固定大小的方案，此方案会有一个切片最大值，如果使用固定大小方案计算出的切片数量大于最大值，那么采用固定数量的方案
+                // max：表示每个切片的大小，即 100kb
+                // count： 切片的数量
+                let max = 1024 * 100,
+                    count = Math.ceil(file.size / max),
+                    index = 0,
+                    chunks = [];
+                // 当切片数量大于阀值时候，采用固定数量方案，重新设置 切片的大小
+                if (count > 100) {
+                    max = file.size / 100;
+                    count = 100;
+                }
+                // 文件进行切片，在file的原型 blob上有一个 slice方法
+                while (index < count) {
+                    chunks.push({
+                        file: file.slice(index * max, (index + 1) * max),
+                        filename: `${HASH}_${index + 1}.${suffix}`
+                    });
+                    index++;
+                }
+
+                // 上传成功的处理
+                index = 0;
+                const clear = () => {
+                    upload_button_select.classList.remove('loading');
+                    upload_progress.style.display = 'none';
+                    upload_progress_value.style.width = '0%';
+                };
+                const complate = async () => {
+                    // 管控进度条
+                    index++;
+                    upload_progress_value.style.width = `${index / count * 100}%`;
+
+                    // 当所有切片都上传成功，合并切片
+                    if (index < count) return;
+                    upload_progress_value.style.width = `100%`;
+                    try {
+                        data = await instance.post('/upload_merge', {
+                            HASH,
+                            count
+                        }, {
+                            headers: {
+                                'Content-Type': 'application/x-www-form-urlencoded'
+                            }
+                        });
+                        if (+data.code === 0) {
+                            alert(`恭喜您，文件上传成功，您可以基于 ${data.servicePath} 访问该文件~~`);
+                            clear();
+                            return;
+                        }
+                        throw data.codeText;
+                    } catch (err) {
+                        alert('切片合并失败，请您稍后再试~~');
+                        clear();
+                    }
+                };
+
+                // 把每一个切片都上传到服务器上
+                chunks.forEach(chunk => {
+                    // 已经上传的无需在上传
+                    if (already.length > 0 && already.includes(chunk.filename)) {
+                        complate();
+                        return;
+                    }
+                    let fm = new FormData;
+                    fm.append('file', chunk.file);
+                    fm.append('filename', chunk.filename);
+                    instance.post('/upload_chunk', fm).then(data => {
+                        if (+data.code === 0) {
+                            complate();
+                            return;
+                        }
+                        return Promise.reject(data.codeText);
+                    }).catch(() => {
+                        alert('当前切片上传失败，请您稍后再试~~');
+                        clear();
+                    });
+                });
+            });
+
+            // 点击上传文件
+            upload_button_select.addEventListener('click', function () {
+                if (checkIsDisable(this)) return;
+                upload_inp.click();
+            });
+        </script>
+    </body>
+
+</html>

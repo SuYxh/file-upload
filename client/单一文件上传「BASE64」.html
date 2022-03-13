@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>单一文件上传「BASE64」</title>
+
+        <!-- IMPORT CSS -->
+        <link rel="stylesheet" href="css/reset.min.css">
+        <link rel="stylesheet" href="css/upload.css">
+        <style>
+            html,
+            body {
+                overflow-x: hidden;
+            }
+
+            .container {
+                padding: 20px 100px;
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-start;
+            }
+
+            .container .item h3 {
+                line-height: 40px;
+            }
+        </style>
+    </head>
+
+    <body>
+        <div class="container">
+            <div class="item">
+                <h3>单一文件上传「BASE64」，只适合图片</h3>
+                <section class="upload_box" id="upload2">
+                    <input type="file" class="upload_inp" accept=".jpg,.jpeg,.png">
+                    <div class="upload_button_box">
+                        <button class="upload_button select">上传图片</button>
+                    </div>
+                    <div class="upload_tip">只能上传jpg/png格式图片，且大小不能超过2mb</div>
+                </section>
+            </div>
+        </div>
+
+
+        <!-- IMPORT JS -->
+        <script src="js/axios.min.js"></script>
+        <script src="js/qs.js"></script>
+        <script src="js//spark-md5.min.js"></script>
+        <script src="js/instance.js"></script>
+        <!-- 单一文件上传「BASE64」-->
+        <script>
+            /* 基于BASE64实现文件上传，一般只用于图片，音视频很少 */
+            let upload = document.querySelector('#upload2'),
+                upload_inp = upload.querySelector('.upload_inp'),
+                upload_button_select = upload.querySelector('.upload_button.select');
+
+            // 验证是否处于可操作性状态
+            const checkIsDisable = element => {
+                let classList = element.classList;
+                return classList.contains('disable') || classList.contains('loading');
+            };
+
+            // 把选择的文件读取成为BASE64
+            const changeBASE64 = file => {
+                return new Promise(resolve => {
+                    let fileReader = new FileReader();
+                    fileReader.readAsDataURL(file);
+                    fileReader.onload = ev => {
+                        resolve(ev.target.result);
+                    };
+                });
+            };
+
+            upload_inp.addEventListener('change', async function () {
+                let file = upload_inp.files[0],
+                    BASE64,
+                    data;
+                if (!file) return;
+                if (file.size > 2 * 1024 * 1024) {
+                    alert('上传的文件不能超过2MB~~');
+                    return;
+                }
+                upload_button_select.classList.add('loading');
+                BASE64 = await changeBASE64(file);
+                try {
+                    data = await instance.post('/upload_single_base64', {
+                        // 防止出现乱码
+                        file: encodeURIComponent(BASE64),
+                        filename: file.name
+                    }, {
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded'
+                        }
+                    });
+                    if (+data.code === 0) {
+                        alert(`恭喜您，文件上传成功，您可以基于 ${data.servicePath} 地址去访问~~`);
+                        return;
+                    }
+                    throw data.codeText;
+                } catch (err) {
+                    alert('很遗憾，文件上传失败，请您稍后再试~~');
+                } finally {
+                    upload_button_select.classList.remove('loading');
+                }
+            });
+
+            upload_button_select.addEventListener('click', function () {
+                // 验证是否处于可操作性状态
+                if (checkIsDisable(this)) return;
+                upload_inp.click();
+            });
+        </script>
+    </body>
+
+</html>

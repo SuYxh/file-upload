@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html>
+
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>多文件上传</title>
+
+        <!-- IMPORT CSS -->
+        <link rel="stylesheet" href="css/reset.min.css">
+        <link rel="stylesheet" href="css/upload.css">
+        <style>
+            html,
+            body {
+                overflow-x: hidden;
+            }
+
+            .container {
+                padding: 20px 100px;
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-start;
+            }
+
+            .container .item h3 {
+                line-height: 40px;
+            }
+        </style>
+    </head>
+
+    <body>
+        <div class="container">
+            <div class="item">
+                <h3>多文件上传</h3>
+                <section class="upload_box" id="upload5">
+                    <input type="file" class="upload_inp" multiple>
+                    <div class="upload_button_box">
+                        <button class="upload_button select">选择文件</button>
+                        <button class="upload_button upload">上传到服务器</button>
+                    </div>
+                    <ul class="upload_list">
+                        <!-- <li key='xx'>
+                                    <span>文件：xxxxx</span>
+                                    <span><em>移除</em></span>
+                                </li> -->
+                    </ul>
+                </section>
+            </div>
+        </div>
+
+
+        <!-- IMPORT JS -->
+        <script src="js/axios.min.js"></script>
+        <script src="js/qs.js"></script>
+        <script src="js//spark-md5.min.js"></script>
+        <script src="js/instance.js"></script>
+        <!-- 多文件上传 -->
+        <script>
+            let upload = document.querySelector('#upload5'),
+                upload_inp = upload.querySelector('.upload_inp'),
+                upload_button_select = upload.querySelector('.upload_button.select'),
+                upload_button_upload = upload.querySelector('.upload_button.upload'),
+                upload_list = upload.querySelector('.upload_list');
+            let _files = [];
+
+            // 验证是否处于可操作性状态
+            const checkIsDisable = element => {
+                let classList = element.classList;
+                return classList.contains('disable') || classList.contains('loading');
+            };
+
+            // 把文件上传到服务器
+            const changeDisable = flag => {
+                if (flag) {
+                    upload_button_select.classList.add('disable');
+                    upload_button_upload.classList.add('loading');
+                    return;
+                }
+                upload_button_select.classList.remove('disable');
+                upload_button_upload.classList.remove('loading');
+            };
+            upload_button_upload.addEventListener('click', async function () {
+                if (checkIsDisable(this)) return;
+                if (_files.length === 0) {
+                    alert('请您先选择要上传的文件~~');
+                    return;
+                }
+                changeDisable(true);
+                // 循环发送请求
+                // 获取到li，然后在获取到span 然后将进度写入
+                let upload_list_arr = Array.from(upload_list.querySelectorAll('li'));
+                _files = _files.map(item => {
+                    let fm = new FormData,
+                        // 根据key找到当前的li 
+                        curLi = upload_list_arr.find(liBox => liBox.getAttribute('key') === item.key),
+                        // 获取到li最后一个span
+                        curSpan = curLi ? curLi.querySelector('span:nth-last-child(1)') : null;
+                    fm.append('file', item.file);
+                    fm.append('filename', item.filename);
+                    return instance.post('/upload_single', fm, {
+                        onUploadProgress (ev) {
+                            // 检测每一个的上传进度
+                            if (curSpan) {
+                                curSpan.innerHTML = `${(ev.loaded / ev.total * 100).toFixed(2)}%`;
+                            }
+                        }
+                    }).then(data => {
+                        if (+data.code === 0) {
+                            if (curSpan) {
+                                curSpan.innerHTML = `100%`;
+                            }
+                            return;
+                        }
+                        return Promise.reject();
+                    });
+                });
+
+                // 等待所有处理的结果
+                Promise.all(_files).then(() => {
+                    alert('恭喜您，所有文件都上传成功~~');
+                }).catch(() => {
+                    alert('很遗憾，上传过程中出现问题，请您稍后再试~~');
+                }).finally(() => {
+                    changeDisable(false);
+                    _files = [];
+                    upload_list.innerHTML = '';
+                    upload_list.style.display = 'none';
+                });
+            });
+
+            // 基于事件委托实现移除的操作
+            upload_list.addEventListener('click', function (ev) {
+                let target = ev.target,
+                    curLi = null,
+                    key;
+                if (target.tagName === 'EM') {
+                    curLi = target.parentNode.parentNode;
+                    if (!curLi) return;
+                    upload_list.removeChild(curLi);
+                    key = curLi.getAttribute('key');
+                    _files = _files.filter(item => item.key !== key);
+                    if (_files.length === 0) {
+                        upload_list.style.display = 'none';
+                    }
+                }
+            });
+
+            // 获取唯一值
+            const createRandom = () => {
+                let ran = Math.random() * new Date();
+                return ran.toString(16).replace('.', '');
+            };
+            upload_inp.addEventListener('change', async function () {
+                _files = Array.from(upload_inp.files);
+                if (_files.length === 0) return;
+                // 我们重构集合的数据结构「给每一项设置一个位置值，作为自定义属性存储到元素上，后期点击删除按钮的时候，我们基于这个自定义属性获取唯一值，再到集合中根据这个唯一值，删除集合中这一项」
+                _files = _files.map(file => {
+                    return {
+                        file,
+                        filename: file.name,
+                        key: createRandom()
+                    };
+                });
+                // 绑定数据
+                let str = ``;
+                _files.forEach((item, index) => {
+                    str += `<li key="${item.key}">
+                <span>文件${index + 1}：${item.filename}</span>
+                <span><em>移除</em></span>
+            </li>`;
+                });
+                upload_list.innerHTML = str;
+                upload_list.style.display = 'block';
+            });
+
+            upload_button_select.addEventListener('click', function () {
+                if (checkIsDisable(this)) return;
+                upload_inp.click();
+            });
+        </script>
+    </body>
+
+</html>

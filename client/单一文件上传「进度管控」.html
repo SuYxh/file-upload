@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html>
+
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>单一文件上传「进度管控」</title>
+
+        <!-- IMPORT CSS -->
+        <link rel="stylesheet" href="css/reset.min.css">
+        <link rel="stylesheet" href="css/upload.css">
+        <style>
+            html,
+            body {
+                overflow-x: hidden;
+            }
+
+            .container {
+                padding: 20px 100px;
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-start;
+            }
+
+            .container .item h3 {
+                line-height: 40px;
+            }
+        </style>
+    </head>
+
+    <body>
+        <div class="container">
+            <div class="item">
+                <h3>单一文件上传「进度管控」</h3>
+                <section class="upload_box" id="upload4">
+                    <input type="file" class="upload_inp">
+                    <div class="upload_button_box">
+                        <button class="upload_button select">上传文件</button>
+                    </div>
+                    <div class="upload_progress">
+                        <div class="value"></div>
+                    </div>
+                </section>
+            </div>
+        </div>
+
+
+        <!-- IMPORT JS -->
+        <script src="js/axios.min.js"></script>
+        <script src="js/qs.js"></script>
+        <script src="js//spark-md5.min.js"></script>
+        <script src="js/instance.js"></script>
+        <!-- 单一文件上传「进度管控」 -->
+        <script>
+            // 延迟函数
+            const delay = function delay (interval) {
+                typeof interval !== "number" ? interval = 1000 : null;
+                return new Promise(resolve => {
+                    setTimeout(() => {
+                        resolve();
+                    }, interval);
+                });
+            };
+            let upload = document.querySelector('#upload4'),
+                upload_inp = upload.querySelector('.upload_inp'),
+                upload_button_select = upload.querySelector('.upload_button.select'),
+                upload_progress = upload.querySelector('.upload_progress'),
+                upload_progress_value = upload_progress.querySelector('.value');
+
+            // 验证是否处于可操作性状态
+            const checkIsDisable = element => {
+                let classList = element.classList;
+                return classList.contains('disable') || classList.contains('loading');
+            };
+
+            upload_inp.addEventListener('change', async function () {
+                let file = upload_inp.files[0],
+                    data;
+                if (!file) return;
+                upload_button_select.classList.add('loading');
+                try {
+                    let formData = new FormData();
+                    formData.append('file', file);
+                    formData.append('filename', file.name);
+                    data = await instance.post('/upload_single', formData, {
+                        // 文件上传中的回调函数 
+                        onUploadProgress (ev) {
+                            let {
+                                loaded,
+                                total
+                            } = ev;
+                            upload_progress.style.display = 'block';
+                            upload_progress_value.style.width = `${loaded / total * 100}%`;
+                        }
+                    });
+                    if (+data.code === 0) {
+                        upload_progress_value.style.width = `100%`
+                        await delay(300)
+                        alert(
+                            `恭喜您，文件上传成功，您可以基于 ${data.servicePath} 访问该文件~~`
+                        )
+                        return
+                    }
+                    throw data.codeText;
+                } catch (err) {
+                    alert('很遗憾，文件上传失败，请您稍后再试~~');
+                } finally {
+                    upload_button_select.classList.remove('loading');
+                    upload_progress.style.display = 'none';
+                    upload_progress_value.style.width = `0%`;
+                }
+            });
+
+            upload_button_select.addEventListener('click', function () {
+                if (checkIsDisable(this)) return;
+                upload_inp.click();
+            });
+        </script>
+    </body>
+
+</html>
